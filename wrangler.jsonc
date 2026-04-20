@@ -1,0 +1,41 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "dashcommerce-demo",
+	"compatibility_date": "2026-04-01",
+	"compatibility_flags": ["nodejs_compat"],
+
+	// `main` and `assets` are intentionally omitted here. @astrojs/cloudflare
+	// v13+ emits a fully-resolved `dist/server/wrangler.json` at build time
+	// that merges these fields with the bindings + vars below. Always deploy
+	// against that generated file:
+	//
+	//   wrangler deploy --config dist/server/wrangler.json
+	//
+	// Use `bun run cf:deploy` which handles this automatically.
+
+	"vars": {
+		"SITE_URL": "https://demo.dashcommerce.dev"
+	},
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "dashcommerce-demo",
+			"database_id": "8d8fb698-1954-41cb-bc25-d6e77053dc85"
+		}
+	],
+
+	"r2_buckets": [
+		{
+			"binding": "MEDIA",
+			"bucket_name": "dashcommerce-demo-media","preview_bucket_name": "dashcommerce-demo-media"
+		}
+	]
+
+	// Secrets (not in this file — set via `wrangler secret put`):
+	//   EMDASH_AUTH_SECRET      — session/token signing (generate with `openssl rand -hex 32`)
+	//   EMDASH_PREVIEW_SECRET   — draft content preview signing
+	//
+	// Also set at build time (not here — passed via CI env or shell):
+	//   R2_PUBLIC_URL           — baked into the bundle, e.g. https://pub-xxx.r2.dev
+}
