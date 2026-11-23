@@ -1,22 +1,29 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "dashcommerce-demo",
+	// Custom Worker entry: Astro's fetch handler + EmDash's scheduled() handler,
+	// which the Cron Trigger below drives (plugin cron, scheduled publishing,
+	// system cleanup). See src/worker.ts. The @astrojs/cloudflare adapter merges
+	// its `assets` binding into the generated `dist/server/wrangler.json` at
+	// build time; `npm run build:cf` emits that file and we deploy against it.
+	"main": "./src/worker.ts",
 	"compatibility_date": "2026-04-01",
-	"compatibility_flags": ["nodejs_compat"],
-
-	// `main` and `assets` are intentionally omitted here. @astrojs/cloudflare
-	// v13+ emits a fully-resolved `dist/server/wrangler.json` at build time
-	// that merges these fields with the bindings + vars below. Always deploy
-	// against that generated file:
-	//
-	//   wrangler deploy --config dist/server/wrangler.json
-	//
-	// Use `bun run cf:deploy` which handles this automatically.
-
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	// Cron Trigger - drives DashCommerce's abandoned-cart recovery, subscription
+	// dunning, and stock-lock sweeps (plus emdash scheduled publishing). Without
+	// it these background jobs never run on Cloudflare (emdash 0.19+).
+	"triggers": {
+		"crons": [
+			"* * * * *"
+		]
+	},
+	// Deploy against the adapter-generated `dist/server/wrangler.json`, which
+	// merges `assets` + the bindings/vars below. Use `npm run cf:deploy`.
 	"vars": {
 		"SITE_URL": "https://demo.dashcommerce.dev"
 	},
-
 	"d1_databases": [
 		{
 			"binding": "DB",
@@ -24,18 +31,30 @@
 			"database_id": "05bdeaf4-109c-43c0-81a5-10dc2decb9f0"
 		}
 	],
-
 	"r2_buckets": [
 		{
 			"binding": "MEDIA",
-			"bucket_name": "dashcommerce-demo-media","preview_bucket_name": "dashcommerce-demo-media"
+			"bucket_name": "dashcommerce-demo-media",
+			"preview_bucket_name": "dashcommerce-demo-media"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "SESSION"
 		}
 	]
-
-	// Secrets (not in this file — set via `wrangler secret put`):
-	//   EMDASH_AUTH_SECRET      — session/token signing (generate with `openssl rand -hex 32`)
-	//   EMDASH_PREVIEW_SECRET   — draft content preview signing
+	// Sandboxed plugins (DashCommerce Lite, DASHCOMMERCE_EDITION=sandboxed, or
+	// any plugin installed from the EmDash registry) run in Dynamic Workers.
+	// That needs the Workers Paid plan and this binding; add a comma after the
+	// kv_namespaces block above and uncomment:
+	// "worker_loaders": [{ "binding": "LOADER" }]
+	// Secrets (not in this file - set via `wrangler secret put`):
+	//   EMDASH_AUTH_SECRET      - session/token signing (generate with `openssl rand -hex 32`)
+	//   EMDASH_PREVIEW_SECRET   - draft content preview signing
 	//
-	// Also set at build time (not here — passed via CI env or shell):
-	//   R2_PUBLIC_URL           — baked into the bundle, e.g. https://pub-xxx.r2.dev
+	// Also set at build time (not here - passed via CI env or shell):
+	//   R2_PUBLIC_URL           - baked into the bundle, e.g. https://pub-xxx.r2.dev
+	//
+	// SESSION KV id is filled at deploy time by scripts/patch-wrangler-config.mjs
+	// from CF_KV_SESSION_ID (same as the live Worker).
 }

@@ -1,6 +1,6 @@
 # @dashcommerce/starter
 
-**v0.2.0** — a ready-to-run Astro commerce site built on [EmDash CMS](https://github.com/emdash-cms/emdash) 0.5 and **`@dashcommerce/core@0.1.3`**. Every feature category the core plugin ships is exercised by a real page.
+**v0.3.11** - a ready-to-run Astro commerce site built on [EmDash CMS](https://github.com/emdash-cms/emdash) 1.5 and **`@dashcommerce/core@0.3.6`**. Every feature category the core plugin ships is exercised by a real page.
 
 **Live demo:** [demo.dashcommerce.dev](https://demo.dashcommerce.dev) · **Templates:** [dashcommerce.dev/templates](https://dashcommerce.dev/templates)
 
@@ -18,7 +18,7 @@ bun run bootstrap   # emdash init + merge-seed + seed (DB + 6 demo products)
 bun run dev         # Astro at :4321
 ```
 
-Open [http://localhost:4321](http://localhost:4321) — hero with "Enamel Mug" and a product grid. Paste your Stripe test keys at `/_emdash/admin/plugins/dashcommerce/settings` and you're exercising a real checkout in under a minute.
+Open [http://localhost:4321](http://localhost:4321) - hero with "Enamel Mug" and a product grid. Paste your Stripe test keys at `/_emdash/admin/plugins/dashcommerce/settings` and you're exercising a real checkout in under a minute.
 
 Prefer to clone directly? Works too:
 
@@ -189,14 +189,95 @@ Swap SQLite for Postgres by uncommenting the `db` service in `docker-compose.yml
 
 ## Customizing
 
-This is a *starting point*, not a framework. Everything is standard Astro — edit freely.
+This is a *starting point*, not a framework. Everything is standard Astro - edit freely.
 
 - **Layout + brand:** `src/layouts/Shop.astro`, `src/components/Header.astro`, `src/styles/global.css`
 - **Homepage sections:** admin under **Pages → Home** (hero, featured grid, blog teaser, value props)
 - **Nav / footer:** admin under **DashCommerce → Menus** (nested up to 4 levels, with mega-menu columns)
 - **Product tile + detail:** the starter copies components out of `@dashcommerce/core/astro/components/*`; edit the local copies freely, or drop in your own
 
-The plugin itself is `@dashcommerce/core` on npm. Don't fork it — customize at the site level and file an issue if the core needs to change.
+The plugin itself is `@dashcommerce/core` on npm. Don't fork it - customize at the site level and file an issue if the core needs to change.
+
+## Sandboxed edition (optional)
+
+By default this site registers `@dashcommerce/core` and uses its Astro
+components. Set `DASHCOMMERCE_EDITION=sandboxed` at build time to switch to
+the sandboxed DashCommerce plugin from the EmDash plugin registry instead:
+
+```sh
+DASHCOMMERCE_EDITION=sandboxed npm run build
+```
+
+In this edition:
+
+- `@dashcommerce/core` is not registered. The registry plugin has its own
+  id, `dashcommerce-lite` (core is `dashcommerce`), with routes under
+  `/_emdash/api/plugins/dashcommerce-lite/`. Install one or the other, not
+  both: each runs its own cart, checkout, orders and Stripe webhook.
+- Install DashCommerce Lite (`dashcommerce-lite`) from the registry in the
+  admin (Plugins). This needs EmDash 1.3 or later and a sandbox runner. On
+  Cloudflare the config passes
+  `sandbox()` from `@emdash-cms/cloudflare`, which needs a `LOADER` Worker
+  Loader binding in `wrangler.jsonc` (Workers paid plan). On Node, add a
+  runner such as `@emdash-cms/sandbox-workerd` yourself.
+- The pages use the storefront kit: `src/lib/dashcommerce.js` and
+  `src/components/AddToCart.astro`, `CartCount.astro`, `Cart.astro` and
+  `CheckoutSuccess.astro`. The product page shows `SandboxedProductInfo`.
+- `/checkout` redirects to `/cart`, which sends the shopper to Stripe
+  Checkout. Orders land on `/checkout/success`.
+- Simple products only. `/account`, `/orders/lookup`, `/subscriptions/*` and
+  `/thank-you/*` return 404, and the currency switcher is hidden.
+
+The live demo at [demo.dashcommerce.dev](https://demo.dashcommerce.dev) stays
+on the native edition.
+
+## Live D1 (demo.dashcommerce.dev)
+
+The live database is D1 `dashcommerce-demo`
+(`05bdeaf4-109c-43c0-81a5-10dc2decb9f0`). EmDash 1.5 adds migrations
+`075_entry_edit_locks` through `097_room_storage` on top of the 0.37 schema
+(through `074_content_deleted_scheduled_index`). D1 does not run DDL at
+request time, so apply those before the new Worker goes live.
+
+`.emdash/migrations.json` is committed with the D1 executor
+(`@emdash-cms/cloudflare/db/d1-migrations`, binding `DB`). From a machine
+with Cloudflare credentials (`CLOUDFLARE_API_TOKEN` plus account access),
+after this branch is installed (`npm install`):
+
+```sh
+# 1. See pending vs applied (does not write)
+npx emdash migrate --status --d1 05bdeaf4-109c-43c0-81a5-10dc2decb9f0
+
+# 2. Apply pending 075-097. Interactive TTY asks for confirmation.
+#    CI / noninteractive must pass the fingerprint printed by --status:
+npx emdash migrate --d1 05bdeaf4-109c-43c0-81a5-10dc2decb9f0
+# npx emdash migrate --d1 05bdeaf4-109c-43c0-81a5-10dc2decb9f0 \
+#   --expected-target-fingerprint <sha256-from-status>
+```
+
+`--d1` can also be the database name `dashcommerce-demo`. There is no
+`--yes` flag. Do not re-run `npm run cf:d1:seed` against the live D1.
+That script drops every table and re-imports the demo dump, which wipes
+orders and CMS edits.
+
+Then deploy:
+
+```sh
+CF_D1_DATABASE_ID=05bdeaf4-109c-43c0-81a5-10dc2decb9f0 \
+CF_KV_SESSION_ID=<existing SESSION namespace id> \
+npm run cf:deploy
+```
+
+Hosted Cloudflare builds should keep using:
+
+```
+npx wrangler deploy --config dist/server/wrangler.json
+```
+
+No new Worker secrets are required. Stripe keys stay in DashCommerce
+settings in the CMS. `src/worker.ts` plus the cron trigger in
+`wrangler.jsonc` start DashCommerce cron (abandoned carts, dunning,
+stock locks) on the Worker.
 
 ## License
 
